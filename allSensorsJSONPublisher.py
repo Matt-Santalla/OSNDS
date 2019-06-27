@@ -14,6 +14,8 @@ import adafruit_lsm9ds1
 #Imports the Color/Light Sensor (APDS9960)
 from adafruit_apds9960.apds9960 import APDS9960
 from adafruit_apds9960 import colorutility
+#Import the Radiation Sensore (Geiger Counter)
+from PiPocketGeiger import RadiationWatch
 
 #Import MQTT
 import paho.mqtt.client as mqtt
@@ -25,6 +27,7 @@ i2c = busio.I2C(board.SCL, board.SDA)
 global altitudePressureSensor
 global accelerationSensor
 global rgbSensor
+global radiationSensor
 
 #MQTT variables 
 broker_address = "iot.eclipse.org"
@@ -49,6 +52,10 @@ def initializeSensors():
     rgbSensor.enable_color = True
     rgbSensor.enable_proximity = True
     rgbSensor.enable_gesture = True
+
+    global radiationSensor
+    radiationSensor = RadiationWatch(24, 23)
+    radiationSensor.setup()
 
     # You can configure the pressure at sealevel to get better altitude estimates.
     # This value has to be looked up from your local weather forecast or meteorlogical
@@ -124,6 +131,10 @@ def getRGB():
     rgbArray.append(colorutility.calculate_color_temperature(r, g, b))
     rgbArray.append(colorutility.calculate_lux(r, g, b))
     return rgbArray
+
+#Method to get radiation counts
+def getRadiation():
+    return radiationWatch.status()
 
 initializeSensors()
 while True:
