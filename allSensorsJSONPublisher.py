@@ -134,7 +134,7 @@ def getRGB():
 
 #Method to get radiation counts
 def getRadiation():
-    return radiationWatch.status()
+    return radiationSensor.status()
 
 initializeSensors()
 while True:
@@ -152,4 +152,6 @@ while True:
     sendDataMQTT(msg, "gyroscope")
     msg = getJSON(getRGB())
     sendDataMQTT(msg, "RGB")
+    msg = getJSON(getRadiation())
+    sendDataMQTT(msg, "radiation")
     print("\nITERATION COMPLETE\n")
