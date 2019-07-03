@@ -10,7 +10,8 @@ import decimal
 dynamodb = boto3.resource('dynamodb')
 
 #Instance of the table we will insert the data into
-table = dynamodb.Table('SENSOR')
+tablename = "SENSOR"
+table = dynamodb.Table(tablename)
 
 jsonFilename = "sensorData.json"
 
@@ -56,8 +57,9 @@ broker_address="iot.eclipse.org"
 client = mqtt.Client("Bryan's Receiver") #create new instance
 client.on_message=on_message #attach function to callback
 client.connect(broker_address) #connect to broker
-print("Subscribing to topic","osnds/#")
-client.subscribe("osnds/#", 0)
+topic = "#"
+print("Subscribing to topic","osnds/" + topic)
+client.subscribe("osnds/" + topic, 0)
 
 while True:
         client.loop(15)
