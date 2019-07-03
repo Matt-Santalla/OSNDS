@@ -1,3 +1,4 @@
+##WRITE BASH SCRIPT TO APPEND TO JSON FILE
 #First test for all sensors using JSON
 import time
 import board
@@ -65,20 +66,23 @@ def initializeSensors():
     altitudePressureSensor.sealevel_pressure = 101760
 
 #Method that generates JSON formatting (The OrderedDict() method is used to ensure the json variable ordering)
-def getJSON(value):
+def getJSON(value, data_type):
     sampleUUID = str(uuid.uuid1())
-    jsonFormat = [
-        ("UNIT_ID", get_mac()),
-        ("SAMPLE_ID", sampleUUID),
-        ("TIME_STAMP", time.strftime("%d-%m-%Y %H:%M:%S", time.localtime())),
-        ("SENSOR_DATA", value)
-    ]
-    print(json.dumps(OrderedDict(jsonFormat)))
-    return json.dumps(OrderedDict(jsonFormat))
+    jsonFormat = {
+        "UNIT_ID": get_mac(),
+        "SAMPLE_ID": sampleUUID,
+        "DATA": {
+                    "DATA_TYPE": data_type,
+                    "TIME_STAMP": time.strftime("%d-%m-%Y %H:%M:%S", time.localtime()),
+                    "SENSOR_DATA": value
+                }
+    }
+    print("[" + json.dumps((jsonFormat), sort_keys=True, indent = 4) + "]")
+    return("[" + json.dumps((jsonFormat), sort_keys=True, indent = 4) + "]")
 
 #Method to send the data via MQTT in the JSON format
-def sendDataMQTT(msg, topic):
-    client.publish("osnds/" + topic, msg)
+def sendDataMQTT(msg, sensor_name):
+    client.publish("osnds/" + sensor_name, msg)
 
 #Method to get Altitude (MPL3115A2)
 def getAltitude():
@@ -129,7 +133,10 @@ def getRGB():
     rgbArray.append(b)
     rgbArray.append(c)
     rgbArray.append(colorutility.calculate_color_temperature(r, g, b))
-    rgbArray.append(colorutility.calculate_lux(r, g, b))
+    try:
+        rgbArray.append(colorutility.calculate_lux(r, g, b))
+    except(ZeroDivisionError):
+        print("Light is off")
     return rgbArray
 
 #Method to get radiation counts
@@ -138,20 +145,20 @@ def getRadiation():
 
 initializeSensors()
 while True:
-    msg = getJSON(getAltitude())
+    msg = getJSON(getAltitude(), "altitude")
     sendDataMQTT(msg, "altitude")
-    msg = getJSON(getTemp())
+    msg = getJSON(getTemp(), "temperature")
     sendDataMQTT(msg, "temperature")
-    msg = getJSON(getPressure())
+    msg = getJSON(getPressure(), "pressure")
     sendDataMQTT(msg, "pressure")
-    msg = getJSON(getAcceleration())
+    msg = getJSON(getAcceleration(), "acceleration")
     sendDataMQTT(msg, "acceleration")
-    msg = getJSON(getMagnetometer())
+    msg = getJSON(getMagnetometer(), "magnetometer")
     sendDataMQTT(msg, "magnetometer")
-    msg = getJSON(getGyro())
+    msg = getJSON(getGyro(), "gyroscope")
     sendDataMQTT(msg, "gyroscope")
-    msg = getJSON(getRGB())
+    msg = getJSON(getRGB(), "rgb")
     sendDataMQTT(msg, "RGB")
-    msg = getJSON(getRadiation())
+    msg = getJSON(getRadiation(), "radiation")
     sendDataMQTT(msg, "radiation")
     print("\nITERATION COMPLETE\n")
