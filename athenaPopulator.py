@@ -13,8 +13,7 @@ import decimal
 import adafruit_mpl3115a2
 
 #Create an instance to connect to the database
-dynamodb = boto3.client('athena')
-
+athena = boto3.client('athena')
 
 # Initialize the I2C bus.
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -53,9 +52,7 @@ def getAltitude():
 
 initializeSensor()
 while True:
-    msg = getJSON(getAltitude(), "altitude")
 
-    print("\nITERATION COMPLETE\n")
 
 
 #
