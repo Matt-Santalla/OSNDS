@@ -7,6 +7,7 @@ import json
 from uuid import getnode as get_mac
 import uuid
 from collections import OrderedDict
+import os
 
 #Imports the Pressure/Altitude Sensor (mpl3115a2)
 import adafruit_mpl3115a2
@@ -15,7 +16,7 @@ import adafruit_lsm9ds1
 #Imports the Color/Light Sensor (APDS9960)
 from adafruit_apds9960.apds9960 import APDS9960
 from adafruit_apds9960 import colorutility
-#Import the Radiation Sensore (Geiger Counter)
+#Import the Radiation Sensor (Geiger Counter)
 from PiPocketGeiger import RadiationWatch
 
 #Import MQTT
@@ -29,9 +30,10 @@ global altitudePressureSensor
 global accelerationSensor
 global rgbSensor
 global radiationSensor
+global run_threads
+run_threads = True
 
-#MQTT variables 
-broker_address = "iot.eclipse.org"
+#MQTT variables
 client = mqtt.Client("sensor-sender")
 client.connect("iot.eclipse.org", 1883, 60)
 
@@ -41,29 +43,40 @@ def initializeSensors():
     # Alternatively you can specify a different I2C address for the device:
     #sensor = adafruit_mpl3115a2.MPL3115A2(i2c, address=0x10)
     global altitudePressureSensor
-    altitudePressureSensor = adafruit_mpl3115a2.MPL3115A2(i2c, address=0x60)
-    
+    try:
+        altitudePressureSensor = adafruit_mpl3115a2.MPL3115A2(i2c, address=0x60)
+        # You can configure the pressure at sealevel to get better altitude estimates.
+        # This value has to be looked up from your local weather forecast or meteorlogical
+        # reports.  It will change day by day and even hour by hour with weather
+        # changes.  Remember altitude estimation from barometric pressure is not exact!
+        # Set this to a value in pascals:
+        altitudePressureSensor.sealevel_pressure = 101760
+    except(OSError, ValueError):
+        print("Altitude sensor not detected")
+
     #Initialize the Acceleration Sensor (lsm9ds1)
     global accelerationSensor
-    accelerationSensor = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
-    
+    try:
+        accelerationSensor = adafruit_lsm9ds1.LSM9DS1_I2C(i2c)
+    except(OSError, ValueError):
+        print("Acceleration sensor not detected")
+
     #Initialize the RGB Sensor (APDS9960)
     global rgbSensor
-    rgbSensor = APDS9960(i2c)
-    rgbSensor.enable_color = True
-    rgbSensor.enable_proximity = True
-    rgbSensor.enable_gesture = True
+    try:
+        rgbSensor = APDS9960(i2c)
+        rgbSensor.enable_color = True
+        rgbSensor.enable_proximity = True
+        rgbSensor.enable_gesture = True
+    except(OSError, ValueError):
+        print("RGB sensor not detected")
 
     global radiationSensor
-    radiationSensor = RadiationWatch(24, 23)
-    radiationSensor.setup()
-
-    # You can configure the pressure at sealevel to get better altitude estimates.
-    # This value has to be looked up from your local weather forecast or meteorlogical
-    # reports.  It will change day by day and even hour by hour with weather
-    # changes.  Remember altitude estimation from barometric pressure is not exact!
-    # Set this to a value in pascals:
-    altitudePressureSensor.sealevel_pressure = 101760
+    try:
+        radiationSensor = RadiationWatch(24, 23)
+        radiationSensor.setup()
+    except(OSError, ValueError):
+        print("Radiation sensor not detected")
 
 #Method that generates JSON formatting (The OrderedDict() method is used to ensure the json variable ordering)
 def getJSON(value, data_type):
@@ -96,7 +109,7 @@ def getTemp():
 def getPressure():
     return altitudePressureSensor.pressure
 
-#Method to get Acceleration (LSM9DS1)
+#MetgetAltitudehod to get Acceleration (LSM9DS1)
 def getAcceleration():
     accelerationArray = []
     accel_x, accel_y, accel_z = accelerationSensor.acceleration
@@ -143,22 +156,102 @@ def getRGB():
 def getRadiation():
     return radiationSensor.status()
 
+#Starts threads
+def runThreads():
+    global run_threads
+    run_threads = True
+
+#Stops threads from running
+def dontRunThreads():
+    global run_threads
+    run_threads = False
+
+def saveToFile(msg):
+    fileName = time.strftime("%d-%m-%Y", time.localtime()) + "_data"
+    f = open(fileName, "a+")
+    f.write(msg)
+    f.close()
+
+def runAllSensors():
+    #poll rates in seconds
+    altitudePollRate = 1
+    temperaturePollRate = 1
+    pressurePollRate = 1
+    accelerationPollRate = 1
+    magnetometerPollRate = 1
+    gyroscopePollRate = 1
+    rgbPollRate = 1
+    radiationPollRate = 1
+
+
+    while True:
+        dtime = int(time.strftime("%S", time.localtime()))
+        print(dtime)
+        if(dtime % altitudePollRate == 0):
+            try:
+                msg = getJSON(getAltitude(), "altitude")
+                sendDataMQTT(msg, "altitude")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Altitude sensor not detected")
+
+        if(dtime % temperaturePollRate == 0):
+            try:
+                msg = getJSON(getTemp(), "temperature")
+                sendDataMQTT(msg, "temperature")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Temperature sensor not detected")
+
+        if(dtime % pressurePollRate == 0):
+            try:
+                msg = getJSON(getPressure(), "pressure")
+                sendDataMQTT(msg, "pressure")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Pressure sensor not detected")
+
+        if(dtime % accelerationPollRate == 0):
+            try:
+                msg = getJSON(getAcceleration(), "acceleration")
+                sendDataMQTT(msg, "acceleration")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Acceleration sensor not detected")
+
+        if(dtime % magnetometerPollRate == 0):
+            try:
+                msg = getJSON(getMagnetometer(), "magnetometer")
+                sendDataMQTT(msg, "magnetometer")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Magnetometer sensor not detected")
+
+        if(dtime % gyroscopePollRate == 0):
+            try:
+                msg = getJSON(getGyro(), "gyroscope")
+                sendDataMQTT(msg, "gyroscope")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Gyroscope sensor not detected")
+
+        if(dtime % rgbPollRate == 0):
+            try:
+                msg = getJSON(getRGB(), "rgb")
+                sendDataMQTT(msg, "RGB")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("RGB sensor not detected")
+
+        if(dtime % radiationPollRate == 0):
+            try:
+                msg = getJSON(getRadiation(), "radiation")
+                sendDataMQTT(msg, "radiation")
+                saveToFile(msg)
+            except(OSError, ValueError):
+                print("Radiation sensor not detected")
+
+        print("\nITERATION COMPLETE\n")
+
 initializeSensors()
-while True:
-    msg = getJSON(getAltitude(), "altitude")
-    sendDataMQTT(msg, "altitude")
-    msg = getJSON(getTemp(), "temperature")
-    sendDataMQTT(msg, "temperature")
-    msg = getJSON(getPressure(), "pressure")
-    sendDataMQTT(msg, "pressure")
-    msg = getJSON(getAcceleration(), "acceleration")
-    sendDataMQTT(msg, "acceleration")
-    msg = getJSON(getMagnetometer(), "magnetometer")
-    sendDataMQTT(msg, "magnetometer")
-    msg = getJSON(getGyro(), "gyroscope")
-    sendDataMQTT(msg, "gyroscope")
-    msg = getJSON(getRGB(), "rgb")
-    sendDataMQTT(msg, "RGB")
-    msg = getJSON(getRadiation(), "radiation")
-    sendDataMQTT(msg, "radiation")
-    print("\nITERATION COMPLETE\n")
+runAllSensors()
