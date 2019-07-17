@@ -1,4 +1,3 @@
-##WRITE BASH SCRIPT TO APPEND TO JSON FILE
 #First test for all sensors using JSON
 import time
 import board
@@ -8,14 +7,14 @@ from uuid import getnode as get_mac
 import uuid
 from collections import OrderedDict
 import os
+from datetime import datetime
 
 #Imports the Pressure/Altitude Sensor (mpl3115a2)
 import adafruit_mpl3115a2
+
 #Imports the Accelerometer Sensor (lsm9ds1)
 import adafruit_lsm9ds1
-#Imports the Color/Light Sensor (APDS9960)
-from adafruit_apds9960.apds9960 import APDS9960
-from adafruit_apds9960 import colorutility
+
 #Import the Radiation Sensor (Geiger Counter)
 from PiPocketGeiger import RadiationWatch
 
@@ -28,10 +27,7 @@ i2c = busio.I2C(board.SCL, board.SDA)
 #Initializes global variables
 global altitudePressureSensor
 global accelerationSensor
-global rgbSensor
 global radiationSensor
-global run_threads
-run_threads = True
 
 #MQTT variables
 client = mqtt.Client("sensor-sender")
@@ -40,8 +36,6 @@ client.connect("iot.eclipse.org", 1883, 60)
 #Method to initialize all sensors using the global variables
 def initializeSensors():
     # Initialize the Altitude/Pressure Sensor (MPL3115A2)
-    # Alternatively you can specify a different I2C address for the device:
-    #sensor = adafruit_mpl3115a2.MPL3115A2(i2c, address=0x10)
     global altitudePressureSensor
     try:
         altitudePressureSensor = adafruit_mpl3115a2.MPL3115A2(i2c, address=0x60)
@@ -61,16 +55,7 @@ def initializeSensors():
     except(OSError, ValueError):
         print("Acceleration sensor not detected")
 
-    #Initialize the RGB Sensor (APDS9960)
-    global rgbSensor
-    try:
-        rgbSensor = APDS9960(i2c)
-        rgbSensor.enable_color = True
-        rgbSensor.enable_proximity = True
-        rgbSensor.enable_gesture = True
-    except(OSError, ValueError):
-        print("RGB sensor not detected")
-
+    #Initializes the Geiger Counter
     global radiationSensor
     try:
         radiationSensor = RadiationWatch(24, 23)
@@ -86,7 +71,7 @@ def getJSON(value, data_type):
         "SAMPLE_ID": sampleUUID,
         "DATA": {
                     "DATA_TYPE": data_type,
-                    "TIME_STAMP": time.strftime("%d-%m-%Y %H:%M:%S", time.localtime()),
+                    "TIME_STAMP": time.strftime("%d-%m-%Y %H:%M:%S, %s", time.localtime()),
                     "SENSOR_DATA": value
                 }
     }
@@ -109,7 +94,7 @@ def getTemp():
 def getPressure():
     return altitudePressureSensor.pressure
 
-#MetgetAltitudehod to get Acceleration (LSM9DS1)
+#Method to get Acceleration (LSM9DS1)
 def getAcceleration():
     accelerationArray = []
     accel_x, accel_y, accel_z = accelerationSensor.acceleration
@@ -117,7 +102,6 @@ def getAcceleration():
     accelerationArray.append(accel_y)
     accelerationArray.append(accel_z)
     return accelerationArray
-
 
 #Method to get Magnetometer (LSM9DS1)
 def getMagnetometer():
@@ -137,56 +121,34 @@ def getGyro():
     gyroscopeArray.append(gyro_z)
     return gyroscopeArray
 
-#Method to get RGB
-def getRGB():
-    rgbArray = []
-    r, g, b, c = rgbSensor.color_data
-    rgbArray.append(r)
-    rgbArray.append(g)
-    rgbArray.append(b)
-    rgbArray.append(c)
-    rgbArray.append(colorutility.calculate_color_temperature(r, g, b))
-    try:
-        rgbArray.append(colorutility.calculate_lux(r, g, b))
-    except(ZeroDivisionError):
-        print("Light is off")
-    return rgbArray
-
 #Method to get radiation counts
 def getRadiation():
     return radiationSensor.status()
 
-#Starts threads
-def runThreads():
-    global run_threads
-    run_threads = True
-
-#Stops threads from running
-def dontRunThreads():
-    global run_threads
-    run_threads = False
-
+#Saves data to local storage
 def saveToFile(msg):
-    fileName = time.strftime("%d-%m-%Y", time.localtime()) + "_data"
+    fileName = time.strftime("%d-%m-%Y", time.localtime()) + "_data.txt"
     f = open(fileName, "a+")
     f.write(msg)
     f.close()
 
+#Method that runs all sensors
 def runAllSensors():
-    #poll rates in seconds
-    altitudePollRate = 1
-    temperaturePollRate = 1
-    pressurePollRate = 1
-    accelerationPollRate = 1
-    magnetometerPollRate = 1
-    gyroscopePollRate = 1
-    rgbPollRate = 1
-    radiationPollRate = 1
-
+    #Poll rates in milliseconds
+    altitudePollRate = 100000000000000000000000000
+    temperaturePollRate = 1000
+    pressurePollRate = 10000000000000000000000000
+    accelerationPollRate = 1000000000000000000000
+    magnetometerPollRate = 1000000000000000000000
+    gyroscopePollRate = 10000000000000000000000000000
+    radiationPollRate = 1000000000000000000000000000000
 
     while True:
-        dtime = int(time.strftime("%S", time.localtime()))
-        print(dtime)
+        #Initializes the time
+        dtime = int(round(time.time() * 1000))
+        #print(dtime)
+
+        #Gets altitude data at correct poll rate
         if(dtime % altitudePollRate == 0):
             try:
                 msg = getJSON(getAltitude(), "altitude")
@@ -195,6 +157,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Altitude sensor not detected")
 
+        #Gets temperature data at correct poll rate
         if(dtime % temperaturePollRate == 0):
             try:
                 msg = getJSON(getTemp(), "temperature")
@@ -203,6 +166,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Temperature sensor not detected")
 
+        #Gets pressure data at correct poll rate
         if(dtime % pressurePollRate == 0):
             try:
                 msg = getJSON(getPressure(), "pressure")
@@ -211,6 +175,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Pressure sensor not detected")
 
+        #Gets acceleration data at correct poll rate
         if(dtime % accelerationPollRate == 0):
             try:
                 msg = getJSON(getAcceleration(), "acceleration")
@@ -219,6 +184,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Acceleration sensor not detected")
 
+        #Gets megnetometer data at correct poll rate
         if(dtime % magnetometerPollRate == 0):
             try:
                 msg = getJSON(getMagnetometer(), "magnetometer")
@@ -227,6 +193,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Magnetometer sensor not detected")
 
+        #Gets gyroscope data at correct poll rate
         if(dtime % gyroscopePollRate == 0):
             try:
                 msg = getJSON(getGyro(), "gyroscope")
@@ -235,14 +202,7 @@ def runAllSensors():
             except(OSError, ValueError):
                 print("Gyroscope sensor not detected")
 
-        if(dtime % rgbPollRate == 0):
-            try:
-                msg = getJSON(getRGB(), "rgb")
-                sendDataMQTT(msg, "RGB")
-                saveToFile(msg)
-            except(OSError, ValueError):
-                print("RGB sensor not detected")
-
+        #Gets radiaiton data at correct poll rate
         if(dtime % radiationPollRate == 0):
             try:
                 msg = getJSON(getRadiation(), "radiation")
@@ -255,3 +215,4 @@ def runAllSensors():
 
 initializeSensors()
 runAllSensors()
+
